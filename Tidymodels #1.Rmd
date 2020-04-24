@@ -1,0 +1,203 @@
+---
+title: 'Tidy analysis #1 : Correlation and regression fundamentals with tidy data principles'
+author: "Jacob Lowell"
+date: "4/23/2020"
+output: 
+   html_document:
+       theme: flatly
+       toc: true
+       toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE , message = FALSE , warning =  FALSE)
+
+library(knitr)
+options(digits=3)
+
+```
+
+I am working through the first post on the tidymodels site, located at : https://www.tidymodels.org/learn/statistics/tidy-analysis/
+
+# Section 1
+
+## load data
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(knitr)
+library(gt)
+options(scipen=999)
+
+data(Orange)
+
+Orange <- as_tibble(Orange)
+
+cor(Orange$age, Orange$circumference)
+
+
+ggplot(Orange, aes(age, circumference, color = Tree)) +
+  geom_line()+ labs(title =  "Orange circumference by tree")
+```
+
+
+
+## test for correlation within each tree
+
+```{r}
+Orange %>% 
+  group_by(Tree) %>%
+  summarize(correlation = cor(age, circumference)) %>%  gt()
+
+```
+
+
+## hypothesis test circumference vs age
+
+```{r}
+ct <- cor.test(Orange$age, Orange$circumference)
+tidy(ct ) %>%  gt()
+
+tidy(ct )
+```
+
+
+
+## Tidy hypothesis test results with tidy() function
+
+```{r}
+
+```
+
+
+
+# Section 2
+
+## Nested data  - nest-map-unnest
+
+
+```{r}
+library(tidyr)
+
+nested <- 
+  Orange %>% 
+  nest(data = c(age, circumference))
+```
+
+
+### correlation test for each tibble
+
+```{r}
+nested %>% 
+  mutate(test = map(data, ~ cor.test(.x$age, .x$circumference)))
+```
+
+### Tidy each object
+
+```{r}
+
+nested %>% 
+  mutate(
+    test = map(data, ~ cor.test(.x$age, .x$circumference)), # S3 list-col
+    tidied = map(test, tidy)
+  ) 
+
+```
+
+
+### Unnest the tidied data
+
+```{r}
+Orange %>% 
+  nest(data = c(age, circumference)) %>% 
+  mutate(
+    test = map(data, ~ cor.test(.x$age, .x$circumference)), # S3 list-col
+    tidied = map(test, tidy)
+  ) %>% 
+  unnest(cols = tidied) %>% 
+  select(-data, -test) %>% gt()
+```
+
+
+
+# Section 3 Regression Models
+
+## More Useful when applied to Regression
+
+```{r}
+lm_fit <- lm(age ~ circumference, data = Orange)
+tidy(lm_fit)
+
+```
+
+## Multiple regressions with nest -> map -> unnest
+
+```{r}
+Orange %>%
+  nest(data = c(-Tree)) %>% 
+  mutate(
+    fit = map(data, ~ lm(age ~ circumference, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>% 
+  unnest(tidied) %>% 
+  select(-data, -fit) %>%  gt()
+```
+
+
+
+
+## MT cars to nest automatic vs manual transmition  
+
+
+```{r}
+data(mtcars)
+mtcars <- as_tibble(mtcars)
+
+
+mtcars %>%
+  nest(data = c(-am)) %>% 
+  mutate(
+    fit = map(data, ~ lm(wt ~ mpg + qsec + gear, data = .x)),  # S3 list-col
+    tidied = map(fit, tidy)
+  ) %>% 
+  unnest(tidied) %>% 
+  select(-data, -fit) %>% gt()
+
+```
+
+
+### store tidy, augment and glance all at once! 
+
+- Glance shows model performance 
+- Tidy show coefficients
+- Augmet shows observation level fit statistics
+
+
+```{r}
+regressions <- 
+  mtcars %>%
+  nest(data = c(-am)) %>% 
+  mutate(
+    fit = map(data, ~ lm(wt ~ mpg + qsec + gear, data = .x)),
+    tidied = map(fit, tidy),
+    glanced = map(fit, glance),
+    augmented = map(fit, augment)
+  )
+
+regressions %>% 
+  select(tidied) %>% 
+  unnest(tidied) %>%  gt()
+
+regressions %>% 
+  select(augmented) %>% 
+  unnest(augmented) %>%  gt()
+
+
+regressions %>% 
+  select(glanced) %>% 
+  unnest(glanced) %>%  gt()
+
+```
+
+
